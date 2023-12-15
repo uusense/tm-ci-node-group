@@ -1,0 +1,73 @@
+version: "2"
+
+services:
+  tm-ci-jenkins-node:
+    image: registry.cn-hangzhou.aliyuncs.com/uusense/tm-ci-jenkins-node:latest
+    container_name: tm-ci-jenkins-node
+    working_dir: /var/jenkins_home
+    privileged: true
+    restart: always
+    tty: true
+    ports:
+      - "${TM_JENKINS_PORT}:8080"
+      - "${TM_JENKINS_TUNNEL_PORT}:50000"
+    volumes:
+      - ./data/jenkins-server:/var/jenkins_home
+    networks:
+      tm-ci-network:
+        ipv4_address: 172.88.0.5
+
+  tm-ci-minio:
+    image: registry.cn-hangzhou.aliyuncs.com/uusense/tm-ci-minio:latest
+    container_name: tm-ci-minio
+    ports:
+      - "${TM_MINIO_PORT}:9000"
+      - "${TM_MINIO_CONSOLE_PORT}:9001"
+    restart: always
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ACCESS_KEY: ${TM_MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${TM_MINIO_SECRET_KEY}
+    logging:
+       options:
+         max-size: "5000M" # 最大文件上传限制
+         max-file: "10000"
+       driver: json-file
+    volumes:
+       - ./data/minio:/data
+    networks:
+       tm-ci-network:
+         ipv4_address: 172.88.0.7
+
+  tm-ci-java-node:
+    image: registry.cn-hangzhou.aliyuncs.com/uusense/tm-ci-java-node:latest
+    container_name: tm-ci-java-node
+    working_dir: /root
+    privileged: true
+    restart: always
+    tty: true
+    environment:
+      TZ: "Asia/Shanghai"
+      TM_CI_SERVER_URL: ${TM_CI_SERVER_URL}
+      TM_MINIO_SERVER_URL: ${TM_MINIO_SERVER_URL}
+    ports:
+      - "${TM_JAVA_SSH_PORT}:22"
+    volumes:
+      - ./data/java-node:/root
+    command:
+      - sh
+      - -c
+      - |
+        export PATH=$PATH:/usr/local/java/bin
+        curl `echo $TM_CI_SERVER_URL`/japi/v1/install-node/amd64/1.0.14/2.4.1/ | sh
+        /usr/sbin/sshd -D
+        tail -f /dev/null
+    networks:
+      tm-ci-network:
+        ipv4_address: 172.88.0.8
+
+networks:
+    tm-ci-network:
+      ipam:
+        config:
+          - subnet: 172.88.0.0/16
